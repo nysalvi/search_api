@@ -38,6 +38,9 @@ def create_parser():
 def parse_args(parser: ArgumentParser):    
     args = parser.parse_args()        
     
+    if args[0] == '--config' and any(x.startswith('-') for x in args[::-1]):
+        Exception("Must set args OR config")
+
     args.api_rate = ApiRequestRate()(args.api_rate)
     args.time_out = ApiTimeOut()(args.time_out)
 
