@@ -4,6 +4,7 @@ import feedparser
 import argparse
 import time
 import sys
+import re
 import os
 
 parser = argparse.ArgumentParser()
@@ -14,6 +15,8 @@ parser.add_argument("-d", "--delay", type=int, default=4)
 parser.add_argument("-it_size", "--iteration_size", type=int, default=50)
 parser.add_argument("-f", "--file_name")
 args = parser.parse_args()
+
+API_URL = 'http://export.arxiv.org/api/query?'
 
 NLP = "Natural+Language+Processing"
 NER = "Named+Entity+Recognition"
@@ -44,7 +47,7 @@ else:
         "Geochemistry", REM, CAR, RES, SOUR
     ]
 
-def get_query(all_nlp, all_geo):
+def format_query(all_nlp, all_geo):
     search = "all:%28"    
     for i in all_nlp:
         search = search + f"%22{i}%22+OR+"
@@ -54,29 +57,34 @@ def get_query(all_nlp, all_geo):
     search = search[:-4] + "%29"
     return search
 
-API_URL = 'http://export.arxiv.org/api/query?'
+def GET_request_is_valid(result):
+    parsed = feedparser.parse(result)
+    start_index = parsed['feed']['opensearch_startindex']
+    end_index = parsed['feed']['opensearch_itemsperpage']
+    size = end_index - start_index
+    return True if len(result['entries']) != size else False
+        
+
+get_query = lambda query: libreq.urlopen(API_URL + query).read().decode('utf-8')        
 start = args.start
 iter_size = args.iter_size
 delay = args.delay
 
-#test_url = "http://export.arxiv.org/api/query?search_query=all:%28%22Natural+Language+Processing%22+OR+%22NLP%22+OR+%22BERT%22+OR+%22Transformer%22+OR+%22GLOVE%22+OR+%22GPT%22+OR+%22WORD2VEC%22+OR+%22Bag+of+Words%22+OR+%22LSTM%22+OR+%22RNN%22+OR+%22llama%22+OR+%22n-gram%22+OR+%22word+embedding%22+OR+%22clip%22+OR+%22Named+Entity+Recognition%22+OR+%22Large+Language+Model%22%29+AND+all:%28%22geoscience%22+OR+%22Digital+Outcrop+Models%22+OR+%22geophysics%22+OR+%Geochemistry%22+OR+%22Remote+Sensing%22+OR+%22Carbonate+Rocks%22+OR+%22Reservoir+Analogue%22+OR+%22Source+Rocks%22%29"
-searches = [get_query(ALL_NLP, ALL_GEO)]
+searches = [format_query(ALL_NLP, ALL_GEO)]
 for search in searches:
     with open(f"teste.txt", "a+", encoding="utf-8") as file:
         query = 'search_query=%s&start=%i&max_results=%i' % (search, start, iter_size)                   
-        result = libreq.urlopen(API_URL + query).read().decode('utf-8')        
-        file.write(result)
-        file.flush()
+        result = get_query(query)
+        file.write(result); file.flush()
         with tqdm(initial=iter_size, total=TOTAL) as pbar:
             TOTAL = int(feedparser.parse(result).feed['opensearch_totalresults'])        
             i = iter_size
             while i < TOTAL:            
                 time.sleep(delay)
                 query = 'search_query=%s&start=%i&max_results=%i' % (search, i, i+iter_size)                   
-                result = libreq.urlopen(API_URL + query).read().decode('utf-8')
-
-                file.write(result)
-                file.flush()
+                while not GET_request_is_valid(result):
+                    result = get_query(query)
+                file.write(result); file.flush()
                 i+= iter_size
                 pbar.update(iter_size)
         
